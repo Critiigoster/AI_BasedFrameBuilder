@@ -12,39 +12,48 @@ export async function POST(request: Request) {
     const { query } = await request.json()
 
     if (!query) {
-      logger.warn('Empty query received')
+      logger.warn('Empty query received for image generation')
       return NextResponse.json(
-        { error: 'Query is required' },
+        { error: 'Query (prompt) is required for image generation' },
         { status: 400 }
       )
     }
 
-    logger.info('Generating frame for query', { query })
+    logger.info('Generating image for prompt', { query })
 
-    const completion = await openai.chat.completions.create({
-      messages: [
-        {
-          role: "system",
-          content: "You are a helpful assistant that generates detailed frame descriptions based on shoot briefs. Provide clear, technical details about camera angles, lighting, composition, and other relevant aspects."
-        },
-        {
-          role: "user",
-          content: query
-        }
-      ],
-      model: "gpt-4-turbo-preview",
+    const imageResponse = await openai.images.generate({
+      model: "dall-e-3",
+      prompt: query,
+      n: 1,
+      size: "1024x1024",
+      quality: "standard",
+      style: "vivid",
+      response_format: "url",
     })
 
-    const result = completion.choices[0].message.content
-    logger.info('Frame generated successfully', { result })
+    const imageUrl = imageResponse.data[0].url
+    logger.info('Image generated successfully', { imageUrl })
 
-    return NextResponse.json({ result })
+    return NextResponse.json({ imageUrl })
   } catch (error) {
-    logger.error('Error generating frame', { error })
+    logger.error('Error generating image', { error })
     Sentry.captureException(error)
     
+    if (error instanceof OpenAI.APIError) {
+        logger.error('OpenAI API Error details', { 
+            status: error.status,
+            code: error.code,
+            type: error.type,
+            message: error.message
+        });
+        return NextResponse.json(
+            { error: `Failed to generate image: ${error.message}` },
+            { status: error.status || 500 }
+        );
+    }
+
     return NextResponse.json(
-      { error: 'Failed to generate frame' },
+      { error: 'Failed to generate image due to an internal server error' },
       { status: 500 }
     )
   }
